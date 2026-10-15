@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Road Ready Leaderboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;800;900&family=Overpass+Mono:wght@600;700&display=swap" rel="stylesheet">
+<style>
+/* Projector board: a big green highway sign listing the top drivers, live. */
+:root{
+  --ground:#121419; --panel:#1C2027; --line:#2E343D; --ink:#EEF0F2; --muted:#9AA3AD;
+  --amber:#FFB000; --sign:#1F6B45; --signInk:#F4F7F5;
+  --display:"Overpass", "Arial Narrow", Arial, sans-serif;
+  --mono:"Overpass Mono", ui-monospace, Menlo, monospace;
+  color-scheme:dark;
+}
+[hidden]{display:none!important}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--ground); color:var(--ink); font-family:var(--display); display:flex; flex-direction:column; gap:2vh; padding:3vh max(16px,4vw)}
+header{display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap}
+h1{margin:0; font-weight:900; font-size:clamp(2rem,5vw,4.5rem); line-height:1; letter-spacing:.01em}
+h1 span{color:var(--amber)}
+.status{font-family:var(--mono); color:var(--muted); font-size:clamp(.9rem,1.4vw,1.3rem); text-align:right}
+.status b{color:var(--amber)}
+.sign{flex:1; background:var(--sign); border:5px solid var(--signInk); border-radius:22px; padding:2.5vh 3vw; display:flex; flex-direction:column; min-height:0; box-shadow:0 0 0 6px var(--sign)}
+ol{list-style:none; margin:0; padding:0; display:grid; grid-template-rows:repeat(10,1fr); flex:1; min-height:0}
+li{display:grid; grid-template-columns:3.2em 1fr auto auto; align-items:center; gap:2vw; border-bottom:2px solid rgba(244,247,245,.18); color:var(--signInk); font-size:clamp(1.1rem,3.2vh,2.4rem); font-variant-numeric:tabular-nums; min-width:0}
+li:last-child{border-bottom:0}
+li .r{font-family:var(--mono); font-weight:700; opacity:.75}
+li .n{font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0}
+li .h{font-family:var(--mono); font-size:.62em; opacity:.8}
+li .p{font-family:var(--mono); font-weight:700}
+li:first-child .n, li:first-child .p{color:#FFE08A}
+li.empty{opacity:.35}
+li.fresh{animation:pop 1.2s ease-out}
+@keyframes pop{0%{background:rgba(255,224,138,.35)}100%{background:transparent}}
+.msg{color:var(--signInk); font-size:clamp(1rem,2.4vh,1.6rem); opacity:.85; margin:auto}
+@media (prefers-reduced-motion:reduce){ li.fresh{animation:none} }
+</style>
+</head>
+<body>
+<header>
+  <h1>ROAD READY <span>TOP DRIVERS</span></h1>
+  <div class="status"><div id="playing">&nbsp;</div><div id="updated">Connecting…</div></div>
+</header>
+<main class="sign">
+  <ol id="list" aria-live="polite"></ol>
+  <p class="msg" id="msg" hidden></p>
+</main>
+<script>
+/* Paste the same Google Apps Script web app URL used in index.html. */
+const SCRIPT_URL = '';
+const REFRESH_SECONDS = 8;
+
+const $=id=>document.getElementById(id);
+let prev={};
+
+function render(top){
+  const list=$('list'); list.innerHTML='';
+  for(let i=0;i<10;i++){
+    const row=top[i], li=document.createElement('li');
+    const r=document.createElement('span'); r.className='r'; r.textContent=(i+1)+'.';
+    const n=document.createElement('span'); n.className='n';
+    const h=document.createElement('span'); h.className='h';
+    const p=document.createElement('span'); p.className='p';
+    if(row){
+      n.textContent=row.name; h.textContent=row.handled+'/'+row.total+' hazards'; p.textContent=row.score;
+      const key=row.name.toLowerCase(); if(prev[key]!==undefined && prev[key]!==row.score || (prev[key]===undefined && Object.keys(prev).length)) li.className='fresh';
+    } else { li.className='empty'; n.textContent='—'; }
+    li.append(r,n,h,p); list.appendChild(li);
+  }
+  prev={}; top.forEach(t=>prev[t.name.toLowerCase()]=t.score);
+}
+
+async function refresh(){
+  if(!SCRIPT_URL){ $('msg').hidden=false; $('msg').textContent='Add your Apps Script URL to leaderboard.html to show scores.'; $('updated').textContent=''; return; }
+  try{
+    const res=await (await fetch(SCRIPT_URL+'?t='+Date.now())).json();
+    if(!res.ok) throw new Error('bad response');
+    render(res.top||[]);
+    $('msg').hidden=!!(res.top&&res.top.length); $('msg').textContent='No finished drives yet. Scan the code and play!';
+    $('playing').innerHTML=res.playing?'<b>'+res.playing+'</b> driving now':'&nbsp;';
+    $('updated').textContent='Updated '+new Date().toLocaleTimeString([], {hour:'numeric', minute:'2-digit', second:'2-digit'});
+  }catch(e){
+    $('updated').textContent='Can’t reach the scoresheet. Retrying…';
+  }
+}
+render([]); refresh(); setInterval(refresh, REFRESH_SECONDS*1000);
+</script>
+</body>
+</html>

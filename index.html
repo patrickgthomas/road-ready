@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Road Ready</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;800;900&family=Overpass+Mono:wght@600&display=swap" rel="stylesheet">
+<style>
+/* Layout: one-screen game. Highway-sign header with gauges, first-person windshield view in the middle, pedal-style controls below. Single dark "driving at dusk" world. */
+:root{
+  --ground:#121419;
+  --panel:#1C2027;
+  --line:#2E343D;
+  --ink:#EEF0F2;
+  --muted:#9AA3AD;
+  --amber:#FFB000;
+  --sign:#1F6B45;
+  --good:#3CCB7F;
+  --bad:#FF5A4E;
+  --display:"Overpass", "Arial Narrow", Arial, sans-serif;
+  --body:"Overpass", Arial, sans-serif;
+  --mono:"Overpass Mono", ui-monospace, Menlo, monospace;
+  color-scheme:dark;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+[hidden]{display:none!important}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  background:var(--ground); color:var(--ink); font-family:var(--body);
+  display:grid; grid-template-rows:auto 1fr auto; gap:12px;
+  padding-block:12px;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+  overflow:hidden;
+}
+header{display:flex; flex-wrap:wrap; gap:10px; align-items:stretch; justify-content:space-between; max-width:1100px; width:100%; margin-inline:auto}
+.sign{background:var(--sign); border:3px solid var(--ink); border-radius:10px; padding:6px 16px 4px; display:flex; flex-direction:column; justify-content:center}
+.sign h1{margin:0; font-family:var(--display); font-weight:900; font-size:clamp(1.4rem,3vw,2rem); letter-spacing:.02em; line-height:1}
+.sign p{margin:2px 0 0; font-size:.85rem; color:#D6E7DD}
+.hud{display:flex; gap:10px; flex-wrap:wrap}
+.gauge{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:6px 14px; min-width:92px; display:flex; flex-direction:column; justify-content:center}
+.gauge span{font-size:.72rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted)}
+.gauge b{font-family:var(--mono); font-size:1.4rem; font-variant-numeric:tabular-nums; line-height:1.1}
+.gauge b.amber{color:var(--amber)}
+
+#stage{position:relative; min-height:300px; max-width:1100px; width:100%; margin-inline:auto; border-radius:14px; overflow:hidden; background:#0D0F13; border:1px solid var(--line)}
+canvas{position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none}
+#toast{position:absolute; left:50%; top:66px; transform:translateX(-50%); max-width:min(92%,560px); padding:10px 16px; border-radius:10px; background:rgba(18,20,25,.92); border:2px solid var(--line); font-weight:600; font-size:1rem; line-height:1.35; text-align:center; pointer-events:none; transition:opacity .25s}
+#toast.ok{border-color:var(--good)} #toast.bad{border-color:var(--bad)} #toast.info{border-color:var(--amber)}
+#toast small{display:block; color:var(--amber); font-family:var(--mono); font-size:.78rem; letter-spacing:.06em; margin-bottom:2px}
+
+#phone{position:absolute; right:14px; bottom:14px; width:min(260px,70%); background:#F4F5F7; color:#16191E; border-radius:22px; padding:14px; box-shadow:0 10px 30px rgba(0,0,0,.5); display:flex; flex-direction:column; gap:10px; animation:buzz .35s ease-in-out 3}
+#phone .from{font-size:.75rem; text-transform:uppercase; letter-spacing:.08em; color:#59616C; font-weight:800}
+#phone .msg{font-size:1rem; font-weight:600; line-height:1.3}
+#phone .row{display:flex; gap:8px}
+#phone button{flex:1; border:0; border-radius:12px; padding:10px 6px; font:800 .95rem var(--body); cursor:pointer}
+#phone .read{background:#DDE1E6; color:#16191E}
+#phone .keep{background:#16191E; color:#F4F5F7}
+#phone .bar{height:4px; background:#DDE1E6; border-radius:2px; overflow:hidden}
+#phone .bar i{display:block; height:100%; background:#16191E; width:100%}
+@keyframes buzz{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+
+.overlay{position:absolute; inset:0; background:rgba(13,15,19,.95); display:flex; align-items:flex-start; justify-content:center; padding:24px 20px; overflow:auto}
+.card{max-width:580px; width:100%; display:flex; flex-direction:column; gap:14px; margin-block:auto}
+.card h2{margin:0; font-family:var(--display); font-weight:900; font-size:clamp(1.7rem,5vw,2.6rem); line-height:1.05; text-wrap:balance}
+.card h3{margin:0; font-family:var(--display); font-weight:900; font-size:1.2rem; letter-spacing:.04em; text-transform:uppercase; color:var(--amber)}
+.card p{margin:0; color:var(--muted); line-height:1.5; font-size:1.02rem}
+.keys{display:grid; grid-template-columns:auto 1fr; gap:6px 14px; font-size:.98rem}
+.keys kbd{font-family:var(--mono); background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:2px 8px; color:var(--amber); white-space:nowrap}
+.field{display:flex; flex-direction:column; gap:6px}
+.field label{font-weight:800; font-size:.95rem}
+.field input{font:600 1.15rem var(--body); color:var(--ink); background:var(--panel); border:2px solid var(--line); border-radius:10px; padding:12px 14px; width:100%}
+.field input:focus{outline:none; border-color:var(--amber)}
+.field small{color:var(--muted); font-size:.85rem}
+.btns{display:flex; flex-wrap:wrap; gap:10px; align-items:center}
+.go{background:var(--amber); color:#16191E; border:0; border-radius:12px; padding:14px 28px; font:900 1.15rem var(--display); letter-spacing:.03em; cursor:pointer}
+.go:disabled{opacity:.45; cursor:not-allowed}
+.link{background:none; border:0; color:var(--muted); font:600 1rem var(--body); text-decoration:underline; cursor:pointer; padding:8px}
+.go:focus-visible, .ctrl:focus-visible, .link:focus-visible, #phone button:focus-visible{outline:3px solid var(--ink); outline-offset:3px}
+.score{font-family:var(--mono); font-size:clamp(2.4rem,8vw,3.6rem); color:var(--amber); line-height:1}
+.score small{font-size:.4em; color:var(--muted); margin-left:8px}
+.board{display:flex; flex-direction:column; gap:8px; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px}
+.board ol{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px}
+.board li{display:grid; grid-template-columns:2.2em 1fr auto; gap:10px; align-items:baseline; padding:6px 8px; border-radius:8px; font-variant-numeric:tabular-nums}
+.board li .r{font-family:var(--mono); color:var(--muted)}
+.board li .n{font-weight:800; min-width:0; overflow-wrap:anywhere}
+.board li .p{font-family:var(--mono); color:var(--amber)}
+.board li.me{background:rgba(255,176,0,.14)}
+.board .msg{font-size:.92rem}
+.log{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px}
+.log li{display:grid; grid-template-columns:92px 1fr; gap:10px; align-items:start; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:.95rem; line-height:1.35}
+.log li em{font-style:normal; display:block; color:var(--muted); font-family:var(--mono); font-size:.75rem; letter-spacing:.05em}
+.pill{justify-self:start; border-radius:999px; padding:2px 10px; font-weight:800; font-size:.8rem; text-transform:uppercase; letter-spacing:.05em}
+.pill.ok{background:rgba(60,203,127,.16); color:var(--good)}
+.pill.bad{background:rgba(255,90,78,.16); color:var(--bad)}
+details summary{cursor:pointer; font-weight:800; color:var(--ink)}
+details[open] summary{margin-bottom:10px}
+
+.controls{display:grid; grid-template-columns:1fr 1.4fr 1fr; gap:10px; max-width:1100px; width:100%; margin-inline:auto}
+.ctrl{background:var(--panel); color:var(--ink); border:2px solid var(--line); border-radius:14px; padding:14px 8px; font:900 clamp(1rem,2.6vw,1.3rem) var(--display); letter-spacing:.03em; cursor:pointer; user-select:none; -webkit-user-select:none; touch-action:none}
+.ctrl small{display:block; font:600 .72rem var(--mono); color:var(--muted); margin-top:2px}
+.ctrl:active{border-color:var(--amber)}
+#brake{background:#3A1F22; border-color:#6B2E33}
+#brake.on{background:var(--bad); border-color:var(--bad); color:#16191E}
+#brake.on small{color:#16191E}
+@media (prefers-reduced-motion:reduce){ #phone{animation:none} #toast{transition:none} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="sign"><h1>ROAD READY</h1><p>November safety drive</p></div>
+  <div class="hud">
+    <div class="gauge"><span>Speed</span><b id="spd" class="amber">45 mph</b></div>
+    <div class="gauge"><span>Clock</span><b id="clk">4:30 pm</b></div>
+    <div class="gauge"><span>Points</span><b id="tally">0</b></div>
+  </div>
+</header>
+
+<div id="stage">
+  <canvas id="road" aria-label="Driver's view through the windshield of a county truck, with the road and upcoming hazards ahead"></canvas>
+  <div id="toast" style="opacity:0"></div>
+  <div id="phone" hidden>
+    <div class="from" id="pfrom">Text message</div>
+    <div class="msg" id="pmsg"></div>
+    <div class="row"><button class="read" id="pread" type="button">Read it</button><button class="keep" id="pkeep" type="button">Keep driving</button></div>
+    <div class="bar"><i id="pbar"></i></div>
+  </div>
+  <div class="overlay" id="start">
+    <form class="card" id="startForm" novalidate>
+      <h2>You’re behind the wheel. Get across town before dark, and after.</h2>
+      <p>You’re driving a county truck at 45 mph. Hazards from today’s talk come up one at a time. Each one you handle earns 100 points, plus up to 50 more for keeping your speed up safely.</p>
+      <div class="keys">
+        <kbd>Left / Right</kbd><span>Change lanes (buttons, arrow keys, or tap either side of the windshield)</span>
+        <kbd>Brake</kbd><span>Hold to slow down, release to speed back up (button, Space, or Down arrow)</span>
+        <kbd>Phone</kbd><span>Choose whether to read a text or keep driving</span>
+      </div>
+      <div class="field">
+        <label for="pname">Your name for the leaderboard</label>
+        <input id="pname" name="pname" maxlength="24" autocomplete="nickname" placeholder="First name and last initial" required>
+        <small>Your name goes on the leaderboard when you start.</small>
+      </div>
+      <div class="btns"><button class="go" id="startBtn" type="submit" disabled>Start driving</button></div>
+    </form>
+  </div>
+  <div class="overlay" id="end" hidden>
+    <div class="card">
+      <span class="score"><span id="final"></span><small id="finalSub"></small></span>
+      <h2 id="verdict"></h2>
+      <section class="board" id="board" hidden>
+        <h3>Leaderboard</h3>
+        <ol id="boardList"></ol>
+        <p class="msg" id="boardMsg"></p>
+      </section>
+      <details>
+        <summary>Your drive, hazard by hazard</summary>
+        <ul class="log" id="log"></ul>
+      </details>
+      <div class="btns">
+        <button class="go" id="againBtn" type="button">Drive again</button>
+        <button class="link" id="switchBtn" type="button">New driver</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="controls">
+  <button class="ctrl" id="left" type="button">◀ LEFT<small>change lane</small></button>
+  <button class="ctrl" id="brake" type="button">BRAKE<small>hold</small></button>
+  <button class="ctrl" id="right" type="button">RIGHT ▶<small>change lane</small></button>
+</div>
+
+<script>
+/* ===== Leaderboard connection =====
+   Paste your Google Apps Script web app URL between the quotes.
+   Leave it empty to play without a leaderboard. */
+const SCRIPT_URL = '';
+
+const stage=document.getElementById('stage'), cv=document.getElementById('road'), ctx=cv.getContext('2d');
+const $=id=>document.getElementById(id);
+
+/* World units are meters. z = distance ahead of the truck's front bumper. Lanes are 3.6 m wide. */
+const LANE=3.6, EYE=1.8, CAMH=1.3, MPS=0.447, SHOULDER=7.2;
+const laneLat=l=>(l-1)*LANE;
+let W=0,H=0,horizon,dashTop,f;
+
+function resize(){
+  const r=stage.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
+  W=r.width; H=r.height; cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  horizon=H*0.40; dashTop=H*0.80; f=Math.max(W*0.55,H*0.9);
+}
+
+const INFO={
+  debris:{habit:'E · Everything secured', ok:'Steered around a ladder that fell off a truck.', bad:'Hit a ladder that fell off an unsecured load. Strap loads at both ends.'},
+  slow:{habit:'E · Extra space', ok:'Kept your distance from a slow truck.', bad:'Rear-ended a slow truck. Leave 3+ seconds of space.'},
+  stopped:{habit:'E · Extra space', ok:'Handled traffic stopped ahead.', bad:'Rear-ended stopped traffic. More space gives you time to stop.'},
+  disabled:{habit:'O · Over a lane', ok:'Moved over or slowed down for a disabled vehicle.', bad:'Passed a disabled vehicle in the next lane at full speed. Move over or slow 20 under.'},
+  zone:{habit:'O · Over a lane', ok:'Merged out of the closed work-zone lane.', bad:'Drove into the work-zone cones. Merge early.'},
+  ped:{habit:'V · Visibility', ok:'Spotted the pedestrian in the dark and let them cross.', bad:'Hit a pedestrian in dark clothing. Slow down after sunset.'},
+  phone:{habit:'N · No phone in hand', ok:'Let the text wait.', bad:'Looked at your phone for 2 seconds. At 45 mph that’s about 130 feet driven blind.'}
+};
+const TEXTS=[['Supervisor','Where are you? Call me when you get a sec'],['Mom','Did you see the pic I sent??'],['Work order app','New ticket: HVAC alarm, Bldg 3']];
+
+const SCRIPT=[
+  {type:'debris',lane:'you',gap:4.4},
+  {type:'slow',lane:'you',gap:4.6},
+  {type:'phone',gap:3.4},
+  {type:'disabled',gap:4.4},
+  {type:'stopped',lane:'you',gap:4.6},
+  {type:'zone',gap:2.4},
+  {type:'phone',gap:5.6},
+  {type:'night',gap:3.4},
+  {type:'ped',gap:4.8},
+  {type:'disabled',gap:4.4},
+  {type:'stopped',lane:'you',gap:4.6},
+  {type:'phone',gap:3.0},
+  {type:'debris',lane:'you',gap:4.6},
+  {type:'ped',gap:5.5}
+];
+const TOTAL=SCRIPT.filter(s=>s.type!=='night').length;
+
+let S, player={name:'',runId:''};
+function reset(){
+  S={run:false,t:0,speed:45,brake:false,lane:1,x:1,dist:0,objs:[],ei:0,nextAt:1.6,night:0,nightT:0,
+     log:[],points:0,phone:null,phoneN:0,blind:0,crash:0,flash:0,endAt:0,toastT:0};
+  hud();
+}
+
+function toast(msg,kind,tag){const t=$('toast'); t.className=kind; t.innerHTML=''; if(tag){const s=document.createElement('small'); s.textContent=tag; t.appendChild(s);} t.appendChild(document.createTextNode(msg)); t.style.opacity=1; S.toastT=2.6;}
+function record(type,ok){
+  const i=INFO[type], pts=ok?100+Math.round(50*Math.min(1,S.speed/45)):0;
+  S.points+=pts;
+  S.log.push({type,ok,habit:i.habit,msg:ok?i.ok:i.bad,pts});
+  toast((ok?'+'+pts+' · ':'')+(ok?i.ok:i.bad), ok?'ok':'bad', i.habit); hud();
+}
+function hud(){
+  $('spd').textContent=Math.round(S.speed)+' mph';
+  $('tally').textContent=S.points;
+  $('clk').textContent=S.night>0.5?'5:45 pm':'4:30 pm';
+}
+
+function spawn(it){
+  const lane=it.lane==='you'?Math.round(S.x):it.lane;
+  const o={type:it.type,done:false,checked:false};
+  if(it.type==='debris') Object.assign(o,{lat:laneLat(lane),w:1.8,len:1.2,v:0,z:75});
+  else if(it.type==='slow') Object.assign(o,{lat:laneLat(lane),w:2.4,len:7,h:3.2,v:14,z:70});
+  else if(it.type==='stopped') Object.assign(o,{lat:laneLat(lane),w:1.9,len:4.5,h:1.5,v:0,z:90,color:'#4F7DB8'});
+  else if(it.type==='disabled') Object.assign(o,{lat:SHOULDER,w:1.9,len:4.5,h:1.5,v:0,z:80,color:'#8A929C'});
+  else if(it.type==='zone') Object.assign(o,{lat:laneLat(2),w:3.0,len:60,v:0,z:70});
+  else if(it.type==='ped'){const pl=laneLat(S.x); Object.assign(o,{lat:Math.max(-9,pl-3.6),walk:1.5,w:0.5,len:0.5,v:0,z:50});}
+  else if(it.type==='phone'){const m=TEXTS[S.phoneN++%TEXTS.length]; S.phone={until:S.t+4,dur:4}; $('pfrom').textContent=m[0]; $('pmsg').textContent=m[1]; $('phone').hidden=false; return;}
+  else if(it.type==='night'){S.nightT=1; toast('The clocks fell back. It’s 5:45 pm and already dark.','info','Night driving'); return;}
+  S.objs.push(o);
+}
+
+function phoneDone(read){
+  if(!S.phone) return; S.phone=null; $('phone').hidden=true;
+  if(read) S.blind=2.0;
+  record('phone',!read);
+}
+$('pread').onclick=()=>phoneDone(true);
+$('pkeep').onclick=()=>phoneDone(false);
+
+function crash(o){S.crash=1.0; S.flash=0.5; o.done=true; record(o.type,false);}
+
+function update(dt){
+  S.t+=dt;
+  if(S.crash>0){S.crash-=dt; S.speed=0;}
+  else if(S.brake) S.speed=Math.max(0,S.speed-42*dt);
+  else S.speed=Math.min(45,S.speed+11*dt);
+  S.x+=(S.lane-S.x)*Math.min(1,dt*7);
+  S.dist+=S.speed*MPS*dt;
+  S.night+=(S.nightT-S.night)*Math.min(1,dt*0.9);
+  if(S.blind>0) S.blind-=dt;
+  if(S.flash>0) S.flash-=dt;
+  if(S.toastT>0){S.toastT-=dt; if(S.toastT<=0) $('toast').style.opacity=0;}
+  if(S.phone){const left=(S.phone.until-S.t)/S.phone.dur; $('pbar').style.width=Math.max(0,left*100)+'%'; if(left<=0) phoneDone(false);}
+
+  if(S.ei<SCRIPT.length && S.t>=S.nextAt){const it=SCRIPT[S.ei++]; spawn(it); S.nextAt=S.t+it.gap;}
+
+  const pl=laneLat(S.x), PW=1.9, PLEN=4.4;
+  for(const o of S.objs){
+    o.z-=(S.speed-o.v)*MPS*dt;
+    if(o.done) continue;
+    if(o.type==='ped'){
+      o.lat+=o.walk*dt;
+      if(Math.abs(pl-o.lat)<1.25 && o.z<0.4 && o.z>-PLEN){crash(o); continue;}
+      if(o.lat>6.5 || o.z<-PLEN-1){o.done=true; record('ped',true);}
+      continue;
+    }
+    if(o.type==='disabled'){
+      if(!o.checked && o.z<=0){o.checked=true; o.done=true; record('disabled',!(Math.round(S.x)===2 && S.speed>25));}
+      continue;
+    }
+    if(Math.abs(pl-o.lat)<(PW+o.w)/2*0.85 && o.z<0.2 && o.z+o.len>-PLEN){crash(o); continue;}
+    if(o.z+o.len<-PLEN){o.done=true; record(o.type,true);}
+  }
+  S.objs=S.objs.filter(o=>o.z+(o.len||1)>-12 && !(o.type==='ped'&&o.done&&o.lat>9));
+
+  if(S.ei>=SCRIPT.length && !S.phone && S.objs.every(o=>o.done)){
+    if(!S.endAt) S.endAt=S.t+1.6; else if(S.t>=S.endAt) finish();
+  }
+  hud();
+}
+
+/* ---------- Rendering: simple perspective projection from the driver's seat ---------- */
+let camLat=0;
+function P(lat,z,h=0){const d=Math.max(0.35,z+EYE); return {x:W/2+f*(lat-camLat)/d, y:horizon+f*(CAMH-h)/d, s:f/d};}
+function quad(l0,l1,z0,z1,color){
+  z0=Math.max(z0,-1.4); if(z1<=z0) return;
+  const a=P(l0,z0),b=P(l1,z0),c=P(l1,z1),d=P(l0,z1);
+  ctx.fillStyle=color; ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.lineTo(c.x,c.y); ctx.lineTo(d.x,d.y); ctx.closePath(); ctx.fill();
+}
+function rr(x,y,w,h,r){ctx.beginPath(); ctx.roundRect?ctx.roundRect(x,y,w,h,r):ctx.rect(x,y,w,h);}
+function lerpC(a,b,t){const pa=a.match(/\w\w/g).map(h=>parseInt(h,16)),pb=b.match(/\w\w/g).map(h=>parseInt(h,16));return 'rgb('+pa.map((v,i)=>Math.round(v+(pb[i]-v)*t)).join(',')+')';}
+
+function drawVehicle(o){
+  if(o.z+EYE<1) return;
+  const bl=P(o.lat-o.w/2,o.z), br=P(o.lat+o.w/2,o.z), top=P(o.lat,o.z,o.h);
+  const x=bl.x, w=br.x-bl.x, yb=bl.y, yt=top.y, h=yb-yt;
+  if(o.type==='slow'){
+    ctx.fillStyle='#E4E6E9'; rr(x,yt,w,h,w*0.04); ctx.fill();
+    ctx.fillStyle='#C9CDD2'; ctx.fillRect(x+w*0.495,yt+h*0.05,Math.max(1,w*0.01),h*0.8);
+    ctx.fillStyle='#2A2E35'; ctx.fillRect(x,yb-h*0.1,w,h*0.1);
+    ctx.fillStyle='#16191E'; ctx.fillRect(x+w*0.35,yt+h*0.45,w*0.3,h*0.12);
+    ctx.fillStyle='#F2C230'; ctx.font='800 '+Math.max(6,h*0.09)+'px Overpass, Arial, sans-serif'; ctx.textAlign='center'; ctx.fillText('SLOW',x+w/2,yt+h*0.4);
+  } else {
+    ctx.fillStyle=o.color; rr(x,yt,w,h,w*0.12); ctx.fill();
+    ctx.fillStyle='rgba(16,20,28,.8)'; rr(x+w*0.12,yt+h*0.08,w*0.76,h*0.32,w*0.06); ctx.fill();
+    ctx.fillStyle='#1E2228'; ctx.fillRect(x,yb-h*0.18,w,h*0.18);
+    ctx.fillStyle='#E8E8E2'; ctx.fillRect(x+w*0.38,yt+h*0.58,w*0.24,h*0.1);
+  }
+}
+function lights(o){
+  if(o.z+EYE<1 || !o.h) return;
+  const bl=P(o.lat-o.w/2,o.z), br=P(o.lat+o.w/2,o.z), top=P(o.lat,o.z,o.h);
+  const x=bl.x, w=br.x-bl.x, yb=bl.y, h=yb-top.y, ly=o.type==='slow'?yb-h*0.2:yb-h*0.38;
+  const braking=o.type==='stopped'||o.type==='slow';
+  ctx.fillStyle=braking?'#FF3B30':'#A3222A';
+  ctx.fillRect(x+w*0.04,ly,w*0.16,Math.max(2,h*0.08)); ctx.fillRect(x+w*0.8,ly,w*0.16,Math.max(2,h*0.08));
+  if(braking){ctx.fillStyle='rgba(255,59,48,.18)'; ctx.beginPath(); ctx.ellipse(x+w/2,ly,w*0.8,h*0.5,0,0,7); ctx.fill();}
+  if(o.type==='disabled' && Math.floor(S.t*3)%2===0){
+    ctx.fillStyle='#FFB000'; const r=Math.max(2,w*0.07);
+    for(const cx of [x+w*0.1,x+w*0.9]){ctx.beginPath(); ctx.arc(cx,ly,r,0,7); ctx.fill();}
+    ctx.fillStyle='rgba(255,176,0,.22)'; ctx.beginPath(); ctx.ellipse(x+w/2,ly,w*0.9,h*0.6,0,0,7); ctx.fill();
+  }
+}
+function drawPed(o){
+  const b=P(o.lat,o.z), s=b.s;
+  if(o.z+EYE<0.8) return;
+  ctx.fillStyle='#2B2F36'; ctx.fillRect(b.x-0.12*s,b.y-0.85*s,0.1*s,0.85*s); ctx.fillRect(b.x+0.02*s,b.y-0.85*s,0.1*s,0.85*s);
+  ctx.fillStyle='#363B44'; rr(b.x-0.22*s,b.y-1.5*s,0.44*s,0.68*s,0.08*s); ctx.fill();
+  ctx.fillStyle='#5A4636'; ctx.beginPath(); ctx.arc(b.x,b.y-1.62*s,0.12*s,0,7); ctx.fill();
+}
+function drawWorker(lat,z){
+  const b=P(lat,z), s=b.s;
+  ctx.fillStyle='#3A4250'; ctx.fillRect(b.x-0.12*s,b.y-0.85*s,0.24*s,0.85*s);
+  ctx.fillStyle='#FF7A1A'; rr(b.x-0.24*s,b.y-1.5*s,0.48*s,0.68*s,0.08*s); ctx.fill();
+  ctx.fillStyle='#E8F04A'; ctx.fillRect(b.x-0.24*s,b.y-1.2*s,0.48*s,0.06*s);
+  ctx.fillStyle='#F2C230'; ctx.beginPath(); ctx.arc(b.x,b.y-1.64*s,0.14*s,Math.PI,0); ctx.fill();
+}
+function drawZone(o){
+  for(let z=o.z+o.len; z>=o.z; z-=8){
+    if(z+EYE<1) continue;
+    const lat=1.9, a=P(lat-0.22,z), b=P(lat+0.22,z), t=P(lat,z,0.75);
+    ctx.fillStyle='#FF7A1A'; ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.lineTo(t.x,t.y); ctx.closePath(); ctx.fill();
+    const m1=P(lat-0.13,z,0.4), m2=P(lat+0.13,z,0.4); ctx.fillStyle='#F2F2EE'; ctx.fillRect(m1.x,m1.y-Math.max(1,(a.y-t.y)*0.08),m2.x-m1.x,Math.max(1,(a.y-t.y)*0.1));
+  }
+  if(o.z+EYE>1){
+    const sl=P(o.lat-0.9,o.z,1.2), sr=P(o.lat+0.9,o.z,1.2), st=P(o.lat,o.z,2.6), base=P(o.lat,o.z);
+    const w=sr.x-sl.x, h=sl.y-st.y;
+    ctx.fillStyle='#3A3F47'; ctx.fillRect(base.x-w*0.03,sl.y,w*0.06,base.y-sl.y);
+    ctx.fillStyle='#FF7A1A'; rr(sl.x,st.y,w,h,w*0.06); ctx.fill();
+    ctx.fillStyle='#16191E'; ctx.textAlign='center'; ctx.font='900 '+Math.max(6,h*0.3)+'px Overpass, Arial, sans-serif';
+    ctx.fillText('LANE',sl.x+w/2,st.y+h*0.42); ctx.fillText('CLOSED',sl.x+w/2,st.y+h*0.82);
+  }
+  drawWorker(SHOULDER-0.6,o.z+o.len*0.5);
+}
+function drawDebris(o){
+  const z=o.z; if(z+EYE<0.6) return;
+  quad(o.lat-0.9,o.lat+0.9,z,z+0.12,'#C3C8CE');
+  quad(o.lat-0.9,o.lat+0.9,z+1.0,z+1.12,'#C3C8CE');
+  for(let l=-0.8;l<=0.85;l+=0.4) quad(o.lat+l-0.04,o.lat+l+0.04,z,z+1.12,'#9DA4AC');
+}
+
+function draw(){
+  camLat=laneLat(S.x);
+  const shake=S.flash>0?(Math.random()-0.5)*14*S.flash:0;
+  ctx.save(); ctx.translate(shake,shake*0.5);
+  const n=S.night;
+  const sky=ctx.createLinearGradient(0,0,0,horizon);
+  sky.addColorStop(0,lerpC('#6E9CC4','#070A12',n)); sky.addColorStop(1,lerpC('#F0C9A0','#18203A',n));
+  ctx.fillStyle=sky; ctx.fillRect(-20,-20,W+40,horizon+21);
+  ctx.fillStyle=lerpC('#2F4A35','#0B120E',n);
+  ctx.beginPath(); ctx.moveTo(-20,horizon+1);
+  for(let i=0;i<=24;i++){const x=-20+(W+40)*i/24; ctx.lineTo(x,horizon-6-((i*37)%11)-(i%3)*4);}
+  ctx.lineTo(W+20,horizon+1); ctx.closePath(); ctx.fill();
+  ctx.fillStyle=lerpC('#4D6B45','#0E1410',n); ctx.fillRect(-20,horizon,W+40,H-horizon+20);
+
+  const FAR=420;
+  quad(-6.4,9.2,-1.4,FAR,'#5E5A50');
+  quad(-5.6,5.6,-1.4,FAR,'#34383F');
+  quad(5.6,8.8,-1.4,FAR,'#3E4148');
+  quad(-5.5,-5.3,-1.4,FAR,'#E8BE2C');
+  quad(5.3,5.5,-1.4,FAR,'#EDEDE8');
+  const off=S.dist%12;
+  for(let z=-off;z<160;z+=12){ quad(-1.87,-1.73,z,z+4,'#EDEDE8'); quad(1.73,1.87,z,z+4,'#EDEDE8'); }
+  const haze=ctx.createLinearGradient(0,horizon,0,horizon+H*0.08);
+  haze.addColorStop(0,lerpC('#C9B9A8','#121827',n)); haze.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=haze; ctx.globalAlpha=0.55; ctx.fillRect(-20,horizon,W+40,H*0.08); ctx.globalAlpha=1;
+
+  const objs=[...S.objs].sort((a,b)=>(b.z)-(a.z));
+  for(const o of objs){
+    if(o.type==='zone') drawZone(o);
+    else if(o.type==='debris') drawDebris(o);
+    else if(o.type==='ped') drawPed(o);
+    else drawVehicle(o);
+  }
+  for(const o of objs) if(o.h) lights(o);
+
+  if(n>0.02){
+    const pl=camLat, a=P(pl-1.4,-1.2), b=P(pl+1.4,-1.2), c=P(pl+6,42), d=P(pl-6,42);
+    ctx.fillStyle='rgba(3,5,10,'+(0.9*n)+')';
+    ctx.beginPath(); ctx.rect(-20,-20,W+40,H+40);
+    ctx.moveTo(a.x,a.y); ctx.lineTo(d.x,d.y); ctx.lineTo(c.x,c.y); ctx.lineTo(b.x,b.y); ctx.closePath();
+    ctx.fill('evenodd');
+    const g=ctx.createRadialGradient(W/2,H,10,W/2,H,H*0.7); g.addColorStop(0,'rgba(255,240,200,'+(0.08*n)+')'); g.addColorStop(1,'rgba(255,240,200,0)');
+    ctx.fillStyle=g; ctx.fillRect(0,horizon,W,H-horizon);
+    for(const o of objs) if(o.h) lights(o);
+  }
+  if(S.blind>0){ctx.fillStyle='rgba(6,8,12,.97)'; ctx.fillRect(-20,-20,W+40,dashTop+20);}
+
+  /* Dashboard, steering wheel, mirror */
+  ctx.fillStyle='#14161B';
+  ctx.beginPath(); ctx.moveTo(-20,H+20); ctx.lineTo(-20,dashTop+H*0.03);
+  ctx.quadraticCurveTo(W/2,dashTop-H*0.035,W+20,dashTop+H*0.03); ctx.lineTo(W+20,H+20); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#1F232A'; ctx.fillRect(-20,dashTop+H*0.05,W+40,2);
+  const wx=W/2, wy=H*1.06, R=H*0.27;
+  const turn=(S.lane-S.x)*0.55;
+  ctx.save(); ctx.translate(wx,wy); ctx.rotate(turn);
+  ctx.strokeStyle='#0A0B0E'; ctx.lineWidth=Math.max(10,H*0.035); ctx.beginPath(); ctx.arc(0,0,R,0,Math.PI*2); ctx.stroke();
+  ctx.strokeStyle='#2A2E36'; ctx.lineWidth=Math.max(3,H*0.008); ctx.beginPath(); ctx.arc(0,0,R+H*0.008,Math.PI*1.15,Math.PI*1.85); ctx.stroke();
+  ctx.strokeStyle='#0A0B0E'; ctx.lineWidth=Math.max(8,H*0.03);
+  ctx.beginPath(); ctx.moveTo(-R,0); ctx.lineTo(R,0); ctx.stroke();
+  ctx.fillStyle='#FFB000'; ctx.fillRect(-3,-R-H*0.02,6,H*0.03);
+  ctx.restore();
+  const sw=Math.min(84,W*0.11); ctx.fillStyle='#0B0D10'; rr(wx-sw/2,dashTop+H*0.055,sw,H*0.07,8); ctx.fill();
+  ctx.fillStyle=S.speed<1?'#FF5A4E':'#FFB000'; ctx.textAlign='center'; ctx.font='700 '+Math.max(12,H*0.04)+'px "Overpass Mono", monospace';
+  ctx.fillText(Math.round(S.speed),wx,dashTop+H*0.105);
+  if(S.brake||S.crash>0){ctx.fillStyle='#FF5A4E'; ctx.font='800 '+Math.max(9,H*0.018)+'px Overpass, Arial, sans-serif'; ctx.fillText('BRAKE',wx,dashTop+H*0.045);}
+  const mw=Math.min(220,W*0.28);
+  ctx.fillStyle='#0E1014'; rr(W/2-mw/2-4,6,mw+8,42,10); ctx.fill();
+  const mg=ctx.createLinearGradient(0,10,0,44); mg.addColorStop(0,lerpC('#7C93A8','#10141C',n)); mg.addColorStop(1,lerpC('#3E4A44','#07090C',n));
+  ctx.fillStyle=mg; rr(W/2-mw/2,10,mw,34,8); ctx.fill();
+  ctx.restore();
+
+  if(S.blind>0){ctx.fillStyle='#9AA3AD'; ctx.textAlign='center'; ctx.font='800 20px Overpass, Arial, sans-serif'; ctx.fillText('Eyes on your phone…',W/2,horizon); ctx.font='600 15px Overpass, Arial, sans-serif'; ctx.fillText('The truck is still moving.',W/2,horizon+26);}
+  if(S.flash>0){ctx.fillStyle='rgba(255,59,48,'+(S.flash*0.6)+')'; ctx.fillRect(0,0,W,H);}
+}
+
+let last=0;
+function loop(ts){
+  const dt=Math.min(0.05,(ts-(last||ts))/1000); last=ts;
+  if(S.run) update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+/* ---------- Leaderboard ---------- */
+function newId(){return Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10);}
+async function send(payload){
+  if(!SCRIPT_URL) return null;
+  try{
+    const r=await fetch(SCRIPT_URL,{method:'POST',body:JSON.stringify(payload),keepalive:true});
+    return await r.json();
+  }catch(e){ return null; }
+}
+function renderBoard(top){
+  const list=$('boardList'); list.innerHTML='';
+  const me=player.name.trim().toLowerCase();
+  top.forEach((row,i)=>{
+    const li=document.createElement('li'); if(String(row.name).trim().toLowerCase()===me) li.className='me';
+    const r=document.createElement('span'); r.className='r'; r.textContent=(i+1)+'.';
+    const n=document.createElement('span'); n.className='n'; n.textContent=row.name;
+    const p=document.createElement('span'); p.className='p'; p.textContent=row.score+' pts';
+    li.append(r,n,p); list.appendChild(li);
+  });
+}
+
+function finish(){
+  S.run=false; setBrake(false);
+  const good=S.log.filter(l=>l.ok).length;
+  $('final').textContent=S.points+' pts';
+  $('finalSub').textContent=good+' of '+TOTAL+' hazards';
+  $('verdict').textContent=good===TOTAL?'Road ready. Clean drive.':good>=TOTAL-2?'Nearly there. Check the hazards you missed.':'Rough commute. Let’s talk through the misses.';
+  const log=$('log'); log.innerHTML='';
+  for(const l of S.log){
+    const li=document.createElement('li');
+    const pill=document.createElement('span'); pill.className='pill '+(l.ok?'ok':'bad'); pill.textContent=l.ok?'+'+l.pts:'Missed';
+    const t=document.createElement('span'); const em=document.createElement('em'); em.textContent=l.habit; t.append(em,document.createTextNode(l.msg));
+    li.append(pill,t); log.appendChild(li);
+  }
+  $('end').hidden=false; $('againBtn').focus();
+  if(SCRIPT_URL){
+    $('board').hidden=false; $('boardList').innerHTML=''; $('boardMsg').textContent='Saving your score…';
+    send({action:'finish',id:player.runId,name:player.name,score:S.points,handled:good,total:TOTAL}).then(res=>{
+      if(res&&res.ok){renderBoard(res.top||[]); $('boardMsg').textContent=(res.top&&res.top.length)?'':'No scores yet.';}
+      else $('boardMsg').textContent='Couldn’t reach the leaderboard. Your score wasn’t saved, but you can still play.';
+    });
+  }
+}
+
+function start(){
+  reset(); player.runId=newId();
+  send({action:'start',id:player.runId,name:player.name});
+  S.run=true; $('start').hidden=true; $('end').hidden=true; $('phone').hidden=true; $('toast').style.opacity=0;
+}
+
+const nameIn=$('pname');
+try{ nameIn.value=localStorage.getItem('roadReadyName')||''; }catch(e){}
+const syncBtn=()=>{$('startBtn').disabled=nameIn.value.trim().length<2;};
+nameIn.addEventListener('input',syncBtn); syncBtn();
+$('startForm').addEventListener('submit',e=>{
+  e.preventDefault();
+  const v=nameIn.value.trim().replace(/\s+/g,' ').slice(0,24);
+  if(v.length<2){nameIn.focus(); return;}
+  player.name=v; try{localStorage.setItem('roadReadyName',v);}catch(e){}
+  nameIn.blur(); start();
+});
+$('againBtn').onclick=start;
+$('switchBtn').onclick=()=>{ $('end').hidden=true; $('start').hidden=false; nameIn.value=''; syncBtn(); nameIn.focus(); };
+
+function steer(d){ if(!S.run) return; S.lane=Math.max(0,Math.min(2,S.lane+d)); }
+function setBrake(on){ S.brake=!!on&&S.run; $('brake').classList.toggle('on',S.brake); }
+$('left').addEventListener('click',()=>steer(-1));
+$('right').addEventListener('click',()=>steer(1));
+const bk=$('brake');
+bk.addEventListener('pointerdown',e=>{e.preventDefault(); bk.setPointerCapture?.(e.pointerId); setBrake(true);});
+for(const ev of ['pointerup','pointercancel','lostpointercapture']) bk.addEventListener(ev,()=>setBrake(false));
+bk.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault(); setBrake(true);}});
+bk.addEventListener('keyup',e=>{if(e.key==='Enter') setBrake(false);});
+cv.addEventListener('pointerdown',e=>{const r=cv.getBoundingClientRect(); steer(e.clientX-r.left<W/2?-1:1);});
+addEventListener('keydown',e=>{
+  if(e.target===nameIn) return;
+  if(e.key==='ArrowLeft'||e.key==='a'){steer(-1);}
+  else if(e.key==='ArrowRight'||e.key==='d'){steer(1);}
+  else if(e.key===' '||e.key==='ArrowDown'||e.key==='s'){ if(S.run){e.preventDefault(); setBrake(true);} }
+});
+addEventListener('keyup',e=>{ if(e.key===' '||e.key==='ArrowDown'||e.key==='s') setBrake(false); });
+addEventListener('resize',resize);
+if(window.ResizeObserver) new ResizeObserver(resize).observe(stage);
+resize(); reset(); requestAnimationFrame(loop);
+</script>
+</body>
+</html>
