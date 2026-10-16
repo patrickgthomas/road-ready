@@ -48,15 +48,19 @@ header{display:flex; flex-wrap:wrap; gap:10px; align-items:stretch; justify-cont
 
 #stage{position:relative; min-height:300px; max-width:1100px; width:100%; margin-inline:auto; border-radius:14px; overflow:hidden; background:#0D0F13; border:1px solid var(--line)}
 canvas{position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none}
-#toast{position:absolute; left:50%; top:66px; transform:translateX(-50%); max-width:min(92%,560px); padding:10px 16px; border-radius:10px; background:rgba(18,20,25,.92); border:2px solid var(--line); font-weight:600; font-size:1rem; line-height:1.35; text-align:center; pointer-events:none; transition:opacity .25s}
+#toast{position:absolute; left:50%; top:8px; transform:translateX(-50%); width:max-content; max-width:min(calc(100% - 16px),520px); padding:8px 14px; border-radius:10px; background:rgba(18,20,25,.88); border:2px solid var(--line); font-weight:600; font-size:.95rem; line-height:1.3; text-align:center; pointer-events:none; transition:opacity .25s}
 #toast.ok{border-color:var(--good)} #toast.bad{border-color:var(--bad)} #toast.info{border-color:var(--amber)}
 #toast small{display:block; color:var(--amber); font-family:var(--mono); font-size:.78rem; letter-spacing:.06em; margin-bottom:2px}
 
-#phone{position:absolute; right:14px; bottom:14px; width:min(260px,70%); background:#F4F5F7; color:#16191E; border-radius:22px; padding:14px; box-shadow:0 10px 30px rgba(0,0,0,.5); display:flex; flex-direction:column; gap:10px; animation:buzz .35s ease-in-out 3}
+#phone{position:absolute; left:0; right:0; bottom:8px; margin-inline:auto; width:calc(100% - 16px); max-width:520px; background:#F4F5F7; color:#16191E; border-radius:16px; padding:10px 12px; box-shadow:0 6px 18px rgba(0,0,0,.45); display:grid; grid-template-columns:minmax(0,1fr) auto; column-gap:12px; row-gap:4px; align-items:center; animation:buzz .35s ease-in-out 3}
+#phone .from{grid-column:1; grid-row:1}
+#phone .msg{grid-column:1; grid-row:2}
+#phone .row{grid-column:2; grid-row:1 / span 2}
+#phone .bar{grid-column:1 / -1; grid-row:3; margin-top:4px}
 #phone .from{font-size:.75rem; text-transform:uppercase; letter-spacing:.08em; color:#59616C; font-weight:800}
-#phone .msg{font-size:1rem; font-weight:600; line-height:1.3}
+#phone .msg{font-size:.95rem; font-weight:600; line-height:1.25; min-width:0}
 #phone .row{display:flex; gap:8px}
-#phone button{flex:1; border:0; border-radius:12px; padding:10px 6px; font:800 .95rem var(--body); cursor:pointer}
+#phone button{border:0; border-radius:10px; padding:10px 12px; min-height:44px; font:800 .9rem var(--body); cursor:pointer; white-space:nowrap}
 #phone .read{background:#DDE1E6; color:#16191E}
 #phone .keep{background:#16191E; color:#F4F5F7}
 #phone .bar{height:4px; background:#DDE1E6; border-radius:2px; overflow:hidden}
@@ -106,6 +110,27 @@ details[open] summary{margin-bottom:10px}
 #brake{background:#3A1F22; border-color:#6B2E33}
 #brake.on{background:var(--bad); border-color:var(--bad); color:#16191E}
 #brake.on small{color:#16191E}
+@media (max-width:600px){
+  body{gap:8px; padding-block:8px}
+  header{flex-wrap:nowrap; align-items:center}
+  .sign{padding:4px 10px 2px; border-width:2px; border-radius:8px}
+  .sign h1{font-size:1.1rem}
+  .sign p{display:none}
+  .hud{gap:6px; flex-wrap:nowrap}
+  .gauge{min-width:0; padding:3px 9px; border-radius:8px}
+  .gauge span{font-size:.58rem}
+  .gauge b{font-size:1rem}
+  .gauge.clock{display:none}
+  #stage{min-height:240px}
+  #toast{font-size:.8rem; line-height:1.25; padding:5px 10px; border-width:1.5px}
+  #toast small{font-size:.66rem; margin-bottom:1px}
+  #phone{padding:8px 10px; border-radius:12px; column-gap:8px}
+  #phone .from{font-size:.65rem}
+  #phone .msg{font-size:.82rem}
+  #phone .row{gap:6px}
+  #phone button{padding:8px 10px; font-size:.8rem}
+  .ctrl{padding:10px 6px}
+}
 @media (prefers-reduced-motion:reduce){ #phone{animation:none} #toast{transition:none} }
 </style>
 </head>
@@ -115,7 +140,7 @@ details[open] summary{margin-bottom:10px}
   <div class="sign"><h1>ROAD READY</h1><p>November safety drive</p></div>
   <div class="hud">
     <div class="gauge"><span>Speed</span><b id="spd" class="amber">45 mph</b></div>
-    <div class="gauge"><span>Clock</span><b id="clk">4:30 pm</b></div>
+    <div class="gauge clock"><span>Clock</span><b id="clk">4:30 pm</b></div>
     <div class="gauge"><span>Points</span><b id="tally">0</b></div>
   </div>
 </header>
@@ -230,7 +255,7 @@ function reset(){
   hud();
 }
 
-function toast(msg,kind,tag){const t=$('toast'); t.className=kind; t.innerHTML=''; if(tag){const s=document.createElement('small'); s.textContent=tag; t.appendChild(s);} t.appendChild(document.createTextNode(msg)); t.style.opacity=1; S.toastT=2.6;}
+function toast(msg,kind,tag){const t=$('toast'); t.className=kind; t.innerHTML=''; if(tag){const s=document.createElement('small'); s.textContent=tag; t.appendChild(s);} t.appendChild(document.createTextNode(msg)); t.style.opacity=1; S.toastT=2.2;}
 function record(type,ok){
   const i=INFO[type], pts=ok?100+Math.round(50*Math.min(1,S.speed/45)):0;
   S.points+=pts;
