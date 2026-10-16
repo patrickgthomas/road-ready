@@ -25,7 +25,13 @@ h1{margin:0; font-weight:900; font-size:clamp(2rem,5vw,4.5rem); line-height:1; l
 h1 span{color:var(--amber)}
 .status{font-family:var(--mono); color:var(--muted); font-size:clamp(.9rem,1.4vw,1.3rem); text-align:right}
 .status b{color:var(--amber)}
-.sign{flex:1; background:var(--sign); border:5px solid var(--signInk); border-radius:22px; padding:2.5vh 3vw; display:flex; flex-direction:column; min-height:0; box-shadow:0 0 0 6px var(--sign)}
+.stage{flex:1; display:grid; grid-template-columns:1fr auto; gap:3vw; min-height:0}
+.scan{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2vh; background:#FFFFFF; color:#14361F; border-radius:22px; padding:3vh 2.5vw; text-align:center}
+.scan img{width:min(30vh,26vw); height:auto; aspect-ratio:1; display:block}
+.scan b{font-size:clamp(1.4rem,4vh,2.8rem); font-weight:900; line-height:1}
+.scan span{font-family:var(--mono); font-size:clamp(.8rem,1.9vh,1.3rem); font-weight:700; overflow-wrap:anywhere}
+@media (max-width:760px){ .stage{grid-template-columns:1fr} .scan{order:-1} }
+.sign{ background:var(--sign); border:5px solid var(--signInk); border-radius:22px; padding:2.5vh 3vw; display:flex; flex-direction:column; min-height:0; box-shadow:0 0 0 6px var(--sign)}
 ol{list-style:none; margin:0; padding:0; display:grid; grid-template-rows:repeat(10,1fr); flex:1; min-height:0}
 li{display:grid; grid-template-columns:3.2em 1fr auto auto; align-items:center; gap:2vw; border-bottom:2px solid rgba(244,247,245,.18); color:var(--signInk); font-size:clamp(1.1rem,3.2vh,2.4rem); font-variant-numeric:tabular-nums; min-width:0}
 li:last-child{border-bottom:0}
@@ -46,10 +52,17 @@ li.fresh{animation:pop 1.2s ease-out}
   <h1>ROAD READY <span>TOP DRIVERS</span></h1>
   <div class="status"><div id="playing">&nbsp;</div><div id="updated">Connecting…</div></div>
 </header>
+<div class="stage">
 <main class="sign">
   <ol id="list" aria-live="polite"></ol>
   <p class="msg" id="msg" hidden></p>
 </main>
+<aside class="scan">
+  <b>Scan to play</b>
+  <img src="qr.png" alt="QR code linking to patrickgthomas.github.io/road-ready">
+  <span>patrickgthomas.github.io/<br>road-ready</span>
+</aside>
+</div>
 <script>
 /* Paste the same Google Apps Script web app URL used in index.html. */
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwCTzcLHMHkJIA2Vcj2QCy_Q05UlIkEsF4_COR-ngbBsxZM5G4jmEMpV8GRIUa1XCVeAg/exec';
